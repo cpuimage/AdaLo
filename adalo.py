@@ -62,10 +62,8 @@ class AdaLo(torch.optim.Optimizer):
                     continue
                 state = self.state[p]
                 if len(state) == 0:
-                    state['step'] = 0
                     state['m'] = torch.zeros_like(p.data)
                     state['loss_ema'] = 0.0
-                state['step'] += 1
                 m = state['m']
                 loss_ema = state['loss_ema']
                 if weight_decay != 0:
