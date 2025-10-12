@@ -10,11 +10,7 @@ The key idea is embarrassingly simple:
 
 > **Big loss → big step; small loss → small step.**
 
-Instead of using gradient statistics to tune the learning-rate, AdaLo directly exploits the **current value of the loss**:
-
-<p align="center">
-<img src="https://render.githubusercontent.com/render/math?math=\alpha_t=\beta_2\alpha_{t-1}+(1-\beta_2)\frac{\mathcal{L}(\theta_{t-1})}{\kappa}">
-</p>
+Instead of using gradient statistics to tune the learning-rate, AdaLo directly exploits the **current value of the loss**.
 
 Thus the effective learning rate decreases **automatically** as training converges—no extra scheduler, no hyper-grid search.
 
