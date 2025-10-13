@@ -33,7 +33,7 @@ class AdaLo(torch.optim.Optimizer):
                  lr: Union[float, torch.Tensor] = 1e-8,
                  betas: Tuple[float, float] = (0.9, 0.999),
                  weight_decay: float = 1e-2,
-                 kappa: float = 10.0):
+                 kappa: float = 3.0):
         if lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if betas[0] < 0.0 or betas[0] >= 1.0:
