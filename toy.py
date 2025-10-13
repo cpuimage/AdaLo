@@ -132,24 +132,27 @@ for epoch in range(1, epochs + 1):
     for x, _ in tqdm(loader, leave=False, desc=f"Epoch {epoch}"):
         x = x.to(device)
 
+        loss_container = []
+
 
         def closure(data=x):
-            global total_loss
-            global recon_loss
-            global kl_loss
             opt.zero_grad()
             mu, logvar = encoder(data)
             z = reparameterize(mu, logvar)
             x_hat = decoder(z)
-            loss, bce, kld = loss_fn(data, x_hat, mu, logvar)
-            loss.backward()
-            total_loss += loss.item()
-            recon_loss += bce.item()
-            kl_loss += kld.item()
-            return loss
+            _loss, _bce, _kld = loss_fn(data, x_hat, mu, logvar)
+            _loss.backward()
+            loss_container.append(_loss.item())
+            loss_container.append(_bce.item())
+            loss_container.append(_kld.item())
+            return _loss
 
 
-        loss = opt.step(closure)
+        opt.step(closure)
+        loss, bce, kld = loss_container
+        total_loss += loss
+        recon_loss += bce
+        kl_loss += kld
     print(f"Epoch {epoch:02d} | loss={total_loss / len(loader):.4f} "
           f"recon={recon_loss / len(loader):.4f} kl={kl_loss / len(loader):.4f}")
 
