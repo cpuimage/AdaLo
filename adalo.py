@@ -56,10 +56,10 @@ class AdaLo(torch.optim.Optimizer):
             weight_decay = group['weight_decay']
             kappa = group['kappa']
             for p in group['params']:
-                if p.grad.is_sparse:
-                    raise RuntimeError("current optimizer does not support sparse gradients")
                 if p.grad is None:
                     continue
+                if p.grad.is_sparse:
+                    raise RuntimeError("current optimizer does not support sparse gradients")
                 state = self.state[p]
                 if len(state) == 0:
                     state['m'] = torch.zeros_like(p.data)
