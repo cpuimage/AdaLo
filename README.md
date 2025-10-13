@@ -37,7 +37,7 @@ optimizer = AdaLo(model.parameters(),
                   lr=1e-8,        #  (not used for step size; only a lower-bound clamp value for numerical stability)
                   betas=(0.9, 0.999),
                   weight_decay=1e-2,
-                  kappa=10.0)      # loss scaling factor
+                  kappa=3.0)      # loss scaling factor
 
 for inputs, labels in dataloader:
     def closure(inp=inputs, lbl=labels):
