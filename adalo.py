@@ -23,10 +23,11 @@ class AdaLo(torch.optim.Optimizer):
        Args:
            params: Iterable of parameters to optimize or dicts defining
             parameter groups.
-           lr: (not used for step size; only a lower-bound clamp value for numerical stability)
+           lr: Learning rate (not used for step size calculation due to the adaptive learning rate mechanism; retained solely for API consistency)
            betas: (beta1, beta2) coefficients for gradient momentum and loss-EMA smoothing respectively
            weight_decay: L2 weight decay
            kappa: loss scaling factor
+           eps: float. term added to the denominator to improve numerical stability.
            mode: control learning rate adaptation mode ('adversarial' or 'compliant')
                  'adversarial': decrease learning rate when loss increases (conservative strategy)
                  'compliant': increase learning rate when loss increases (aggressive strategy)
@@ -38,6 +39,7 @@ class AdaLo(torch.optim.Optimizer):
                  betas: Tuple[float, float] = (0.9, 0.999),
                  weight_decay: float = 1e-2,
                  kappa: float = 3.0,
+                 eps: float = 1e-8,
                  mode: str = 'adversarial'):
         if lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
@@ -48,7 +50,7 @@ class AdaLo(torch.optim.Optimizer):
         if weight_decay < 0.0:
             raise ValueError("Invalid weight decay: {}".format(weight_decay))
         defaults = dict(lr=lr, beta1=betas[0], beta2=betas[1], weight_decay=weight_decay, kappa=kappa,
-                        mode=mode)
+                        mode=mode, eps=eps)
         super(AdaLo, self).__init__(params, defaults)
 
     def step(self, closure=None, scaler: GradScaler = None, loss=None):
@@ -66,10 +68,10 @@ class AdaLo(torch.optim.Optimizer):
             for group in self.param_groups:
                 beta1 = group['beta1']
                 beta2 = group['beta2']
-                min_lr = group['lr']
                 weight_decay = group['weight_decay']
                 kappa = group['kappa']
                 mode = group['mode']
+                eps = group['eps']
                 for p in group['params']:
                     if p.grad is None:
                         continue
@@ -87,9 +89,9 @@ class AdaLo(torch.optim.Optimizer):
                         transformed_loss = (torch.tanh(-scaled_loss * 0.5) + 1.0) * 0.5
                         loss_ema.lerp_(transformed_loss, 1.0 - beta2)
                     if mode == 'adversarial':
-                        lr_t = loss_ema.div(kappa).clamp_min_(min_lr)
+                        lr_t = loss_ema.div(kappa).clamp_min_(eps)
                     else:
-                        lr_t = (1.0 - loss_ema).div(kappa).clamp_min_(min_lr)
+                        lr_t = (1.0 - loss_ema).div(kappa).clamp_min_(eps)
                     if weight_decay != 0:
                         p.data.mul_(1.0 - lr_t * weight_decay)
                     p.data.sub_(m * lr_t)
