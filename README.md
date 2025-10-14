@@ -77,15 +77,7 @@ Introduce a `mode` parameter that allows users to choose between two distinct ad
    - When loss increases → learning rate increases
    - Aggressive approach to escape local minima
    - Useful for difficult optimization landscapes
-
-### Implementation Details:
-- Added `mode` parameter to constructor with validation
-- Modified adaptive learning rate calculation based on selected mode
-- Maintained full backward compatibility (defaults to adversarial mode)
-
-### Testing:
-The modification maintains all existing functionality while adding new capabilities. Users can now experiment with different adaptation strategies for their specific use cases.
-
+   
 ## Citation
 
 If you use this implementation in your research, please cite:
