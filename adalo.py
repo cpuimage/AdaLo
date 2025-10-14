@@ -83,11 +83,7 @@ class AdaLo(torch.optim.Optimizer):
                     loss_ema = state['loss_ema']
                     m.lerp_(p.grad, 1.0 - beta1)
                     if loss is not None:
-                        loss_value = loss.detach()
-                        if loss_value > 0:
-                            scaled_loss = torch.log1p(loss_value)
-                        else:
-                            scaled_loss = loss_value
+                        scaled_loss = torch.log1p(loss.detach())
                         transformed_loss = (torch.tanh(-scaled_loss * 0.5) + 1.0) * 0.5
                         loss_ema.lerp_(transformed_loss, 1.0 - beta2)
                     if mode == 'adversarial':
