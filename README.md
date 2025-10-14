@@ -63,7 +63,31 @@ Rule of thumb from the paper:
 
 Training time per epoch is **shorter** than Adam/AdaBelief/diffGrad due to lower computational complexity.
 
+### Problem:
+The original AdaLo optimizer only supported one learning rate adaptation strategy where learning rate decreases when loss increases. This limits flexibility in different training scenarios.
 
+### Solution:
+Introduce a `mode` parameter that allows users to choose between two distinct adaptation strategies:
+
+1. **Adversarial Mode** (default):
+   - Learning rate ∝ 1/loss
+   - When loss increases → learning rate decreases
+   - Conservative approach for stable convergence
+   - Maintains original behavior for backward compatibility
+
+2. **Compliant Mode**:
+   - Learning rate ∝ loss  
+   - When loss increases → learning rate increases
+   - Aggressive approach to escape local minima
+   - Useful for difficult optimization landscapes
+
+### Implementation Details:
+- Added `mode` parameter to constructor with validation
+- Modified adaptive learning rate calculation based on selected mode
+- Maintained full backward compatibility (defaults to adversarial mode)
+
+### Testing:
+The modification maintains all existing functionality while adding new capabilities. Users can now experiment with different adaptation strategies for their specific use cases.
 
 ## Citation
 
