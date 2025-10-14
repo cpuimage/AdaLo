@@ -84,7 +84,7 @@ class AdaLo(torch.optim.Optimizer):
                             scaled_loss = loss_value
                         transformed_loss = (torch.tanh(-scaled_loss * 0.5) + 1.0) * 0.5
                         loss_ema.lerp_(transformed_loss, 1.0 - beta2)
-                    lr_t = loss_ema.div_(kappa).clamp_min_(min_lr)
+                    lr_t = loss_ema.div(kappa).clamp_min_(min_lr)
                     if weight_decay != 0:
                         p.data.mul_(1.0 - lr_t * weight_decay)
                     p.data.sub_(m * lr_t)
