@@ -70,13 +70,10 @@ The original AdaLo optimizer only supported one learning rate adaptation strateg
 Introduce a `mode` parameter that allows users to choose between two distinct adaptation strategies:
 
 1. **Adversarial Mode** (default):
-   - Learning rate ∝ 1/loss
    - When loss increases → learning rate decreases
    - Conservative approach for stable convergence
-   - Maintains original behavior for backward compatibility
 
 2. **Compliant Mode**:
-   - Learning rate ∝ loss  
    - When loss increases → learning rate increases
    - Aggressive approach to escape local minima
    - Useful for difficult optimization landscapes
