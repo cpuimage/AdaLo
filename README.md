@@ -64,7 +64,7 @@ Rule of thumb from the paper:
 Training time per epoch is **shorter** than Adam/AdaBelief/diffGrad due to lower computational complexity.
 
 ### Problem:
-The original AdaLo optimizer only supported one learning rate adaptation strategy where learning rate decreases when loss increases. This limits flexibility in different training scenarios.
+The original AdaLo optimizer only supported one learning rate adaptation strategy. This limits flexibility in different training scenarios.
 
 ### Solution:
 Introduce a `mode` parameter that allows users to choose between two distinct adaptation strategies:
