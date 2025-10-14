@@ -3,6 +3,7 @@ Convolutional Variational Auto-Encoder on MNIST – PyTorch implementation
 """
 import os
 import random
+from contextlib import nullcontext
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -95,7 +96,10 @@ class Decoder(nn.Module):
         z = z.view(z.size(0), 64, 7, 7)
         z = F.relu(self.conv_t1(z))
         z = F.relu(self.conv_t2(z))
-        return torch.sigmoid(self.conv_out(z))
+        z = self.conv_out(z)
+        if not self.training:
+            z = torch.sigmoid(z)
+        return z
 
 
 def reparameterize(mu, logvar):
@@ -108,9 +112,9 @@ def reparameterize(mu, logvar):
 # --------------------------------------------------
 # 5. Loss function
 # --------------------------------------------------
-def loss_fn(x, recon, mu, logvar):
+def loss_fn(x, logits, mu, logvar):
     # Reconstruction loss
-    bce = F.binary_cross_entropy(recon, x, reduction='sum') / x.size(0)
+    bce = F.binary_cross_entropy_with_logits(logits, x, reduction='sum') / x.size(0)
     # KL divergence
     kld = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp(), dim=1).mean()
     return bce + kld, bce, kld
@@ -122,7 +126,17 @@ def loss_fn(x, recon, mu, logvar):
 encoder = Encoder().to(device)
 decoder = Decoder().to(device)
 opt = AdaLo(list(encoder.parameters()) + list(decoder.parameters()), lr=lr)
-
+if device.type == 'cuda':
+    scaler = torch.GradScaler()
+    if torch.cuda.is_bf16_supported() and torch.cuda.get_device_properties(0).major >= 8:
+        amp_dtype = torch.bfloat16
+    else:
+        amp_dtype = torch.float16
+    amp_context = torch.autocast(device_type="cuda", dtype=amp_dtype)
+else:
+    scaler = None
+    amp_dtype = torch.float32
+    amp_context = nullcontext()
 for epoch in range(1, epochs + 1):
     encoder.train()
     decoder.train()
@@ -137,18 +151,22 @@ for epoch in range(1, epochs + 1):
 
         def closure(data=x):
             opt.zero_grad()
-            mu, logvar = encoder(data)
-            z = reparameterize(mu, logvar)
-            x_hat = decoder(z)
-            _loss, _bce, _kld = loss_fn(data, x_hat, mu, logvar)
-            _loss.backward()
-            loss_container.append(_loss.item())
-            loss_container.append(_bce.item())
-            loss_container.append(_kld.item())
+            with amp_context:
+                mu, logvar = encoder(data)
+                z = reparameterize(mu, logvar)
+                x_hat = decoder(z)
+                _loss, _bce, _kld = loss_fn(data, x_hat, mu, logvar)
+                if scaler is None:
+                    _loss.backward()
+            loss_container.extend([_loss.item(), _bce.item(), _kld.item()])
             return _loss
 
 
-        opt.step(closure)
+        # AdaLo requires a closure:
+        #  1. closure must zero gradients, run forward & backward, and return the loss.
+        #  2. If mixed-precision training is used, pass the GradScaler;
+        #  the optimizer internally calls scaler.scale(loss).backward(), scaler.unscale_(self), scaler.step(self), and scaler.update().
+        opt.step(closure, scaler)
         loss, bce, kld = loss_container
         total_loss += loss
         recon_loss += bce

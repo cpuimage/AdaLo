@@ -2,6 +2,7 @@
 from typing import Tuple, Union
 
 import torch
+from torch import GradScaler
 
 
 class AdaLo(torch.optim.Optimizer):
@@ -45,39 +46,46 @@ class AdaLo(torch.optim.Optimizer):
         defaults = dict(lr=lr, beta1=betas[0], beta2=betas[1], weight_decay=weight_decay, kappa=kappa)
         super(AdaLo, self).__init__(params, defaults)
 
-    def step(self, closure=None):
-        loss = None
+    def step(self, closure=None, scaler: GradScaler = None, loss=None):
+        already_updated_by_scaler = False
         if closure is not None:
-            loss = closure()
-        for group in self.param_groups:
-            beta1 = group['beta1']
-            beta2 = group['beta2']
-            min_lr = group['lr']
-            weight_decay = group['weight_decay']
-            kappa = group['kappa']
-            for p in group['params']:
-                if p.grad is None:
-                    continue
-                if p.grad.is_sparse:
-                    raise RuntimeError("current optimizer does not support sparse gradients")
-                state = self.state[p]
-                if len(state) == 0:
-                    state['m'] = torch.zeros_like(p.data)
-                    state['loss_ema'] = 0.0
-                m = state['m']
-                loss_ema = state['loss_ema']
-                if weight_decay != 0:
-                    p.grad = p.grad.add(p.data, alpha=weight_decay)
-                m.lerp_(p.grad, 1.0 - beta1)
-                if loss is not None:
-                    loss_value = loss.item()
-                    if loss_value > 0:
-                        scaled_loss = torch.log1p(torch.tensor(loss_value))
-                    else:
-                        scaled_loss = loss
-                    loss_val = (torch.tanh(-scaled_loss * 0.5).item() + 1.0) * 0.5
-                    loss_ema = beta2 * loss_ema + (1.0 - beta2) * loss_val
-                    state['loss_ema'] = loss_ema
-                lr_t = max(min_lr, loss_ema / kappa)
-                p.data.add_(m, alpha=-lr_t)
+            with torch.enable_grad():
+                loss = closure()
+            if scaler is not None:
+                scaler.scale(loss).backward()
+                scaler.unscale_(self)
+                scaler.step(self, loss=loss)
+                scaler.update()
+                already_updated_by_scaler = True
+        if not already_updated_by_scaler:
+            for group in self.param_groups:
+                beta1 = group['beta1']
+                beta2 = group['beta2']
+                min_lr = group['lr']
+                weight_decay = group['weight_decay']
+                kappa = group['kappa']
+                for p in group['params']:
+                    if p.grad is None:
+                        continue
+                    if p.grad.is_sparse:
+                        raise RuntimeError("current optimizer does not support sparse gradients")
+                    state = self.state[p]
+                    if len(state) == 0:
+                        state['m'] = torch.zeros_like(p.data)
+                        state['loss_ema'] = torch.tensor(0.0, device=p.device, dtype=p.dtype)
+                    m = state['m']
+                    loss_ema = state['loss_ema']
+                    m.lerp_(p.grad, 1.0 - beta1)
+                    if loss is not None:
+                        loss_value = loss.detach()
+                        if loss_value > 0:
+                            scaled_loss = torch.log1p(loss_value)
+                        else:
+                            scaled_loss = loss_value
+                        transformed_loss = (torch.tanh(-scaled_loss * 0.5) + 1.0) * 0.5
+                        loss_ema.lerp_(transformed_loss, 1.0 - beta2)
+                    lr_t = loss_ema.div_(kappa).clamp_min_(min_lr)
+                    if weight_decay != 0:
+                        p.data.mul_(1.0 - lr_t * weight_decay)
+                    p.data.sub_(m * lr_t)
         return loss
