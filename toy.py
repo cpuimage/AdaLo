@@ -3,18 +3,25 @@ Convolutional Variational Auto-Encoder on MNIST – PyTorch implementation
 """
 import os
 import random
+import time
 from contextlib import nullcontext
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.tensorboard as tensorboard
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision import datasets, transforms
 from tqdm import tqdm
 
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
 from adalo import AdaLo
+
+optimizer = AdaLo
 
 
 # --------------------------------------------------
@@ -39,7 +46,7 @@ seed_everything()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 batch_size = 128
 epochs = 30
-lr = 1e-8
+lr = 0.0
 latent_dim = 2
 
 # --------------------------------------------------
@@ -125,7 +132,12 @@ def loss_fn(x, logits, mu, logvar):
 # --------------------------------------------------
 encoder = Encoder().to(device)
 decoder = Decoder().to(device)
-opt = AdaLo(list(encoder.parameters()) + list(decoder.parameters()), lr=lr)
+log_dir = os.path.join("training_log", optimizer.__name__)
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir, exist_ok=True)
+summary_writer = tensorboard.SummaryWriter(log_dir)
+print("Tensorboard: tensorboard --logdir={}".format(os.path.abspath(log_dir)))
+opt = optimizer(list(encoder.parameters()) + list(decoder.parameters()), lr=lr)
 if device.type == 'cuda':
     scaler = torch.GradScaler()
     if torch.cuda.is_bf16_supported() and torch.cuda.get_device_properties(0).major >= 8:
@@ -137,12 +149,16 @@ else:
     scaler = None
     amp_dtype = torch.float32
     amp_context = nullcontext()
+
 for epoch in range(1, epochs + 1):
     encoder.train()
     decoder.train()
     total_loss = 0.0
     recon_loss = 0.0
     kl_loss = 0.0
+    start_time = time.time()
+    dataset_count = len(loader)
+    global_step = epoch * dataset_count
     for x, _ in tqdm(loader, leave=False, desc=f"Epoch {epoch}"):
         x = x.to(device)
 
@@ -168,11 +184,23 @@ for epoch in range(1, epochs + 1):
         #  the optimizer internally calls scaler.scale(loss).backward(), scaler.unscale_(self), scaler.step(self), and scaler.update().
         opt.step(closure, scaler)
         loss, bce, kld = loss_container
+
         total_loss += loss
         recon_loss += bce
         kl_loss += kld
-    print(f"Epoch {epoch:02d} | loss={total_loss / len(loader):.4f} "
-          f"recon={recon_loss / len(loader):.4f} kl={kl_loss / len(loader):.4f}")
+        global_step += 1
+        if summary_writer is not None:
+            summary_writer.add_scalar("loss", loss, global_step)
+            summary_writer.add_scalar("recon", recon_loss, global_step)
+            summary_writer.add_scalar("kl", kl_loss, global_step)
+
+    epoch_time = time.time() - start_time
+    log_message = f"Epoch {epoch:02d} | Time: {epoch_time:.2f}s | loss={total_loss / dataset_count:.4f} " \
+                  f"recon={recon_loss / dataset_count:.4f} kl={kl_loss / dataset_count:.4f}"
+    print(log_message)
+
+    with open(os.path.join(log_dir, f"{timestamp}_training_log.txt"), "a") as f:
+        print(log_message, file=f)
 
 
 # --------------------------------------------------
@@ -202,7 +230,8 @@ def plot_latent_space(n=30, figsize=15):
     plt.xlabel("z[0]")
     plt.ylabel("z[1]")
     plt.title("2D latent space manifold")
-    plt.show()
+    plt.savefig(os.path.join(log_dir, f"{timestamp}_latent_space_epoch_{epoch}.png"), dpi=120)
+    plt.close()
 
 
 @torch.no_grad()
@@ -224,7 +253,8 @@ def plot_label_clusters(data_loader, max_samples=5000):
     plt.xlabel("z[0]")
     plt.ylabel("z[1]")
     plt.title("Latent space clustering by digit class")
-    plt.show()
+    plt.savefig(os.path.join(log_dir, f"{timestamp}_latent_clustering_epoch_{epoch}.png"), dpi=120)
+    plt.close()
 
 
 # Run visualization
